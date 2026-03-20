@@ -1,0 +1,73 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String         @id @default(cuid())
+  phone     String         @unique
+  createdAt DateTime       @default(now())
+  plans     WorkoutPlan[]
+  sessions  WorkoutSession[]
+}
+
+model WorkoutPlan {
+  id          String            @id @default(cuid())
+  userId      String
+  name        String
+  muscleGroup String
+  createdAt   DateTime          @default(now())
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercises   WorkoutExercise[]
+  sessions    WorkoutSession[]
+}
+
+model WorkoutExercise {
+  id           String      @id @default(cuid())
+  workoutPlanId String
+  exerciseName String
+  orderIndex   Int
+  targetSets   Int
+  targetReps   Int
+  restSeconds  Int
+  workoutPlan  WorkoutPlan @relation(fields: [workoutPlanId], references: [id], onDelete: Cascade)
+}
+
+model WorkoutSession {
+  id           String            @id @default(cuid())
+  userId       String
+  workoutPlanId String
+  status       String            @default("ACTIVE")
+  startedAt    DateTime          @default(now())
+  finishedAt   DateTime?
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workoutPlan  WorkoutPlan       @relation(fields: [workoutPlanId], references: [id], onDelete: Cascade)
+  exercises    SessionExercise[]
+}
+
+model SessionExercise {
+  id               String        @id @default(cuid())
+  workoutSessionId String
+  exerciseName     String
+  orderIndex       Int
+  targetSets       Int
+  targetReps       Int
+  restSeconds      Int
+  workoutSession   WorkoutSession @relation(fields: [workoutSessionId], references: [id], onDelete: Cascade)
+  sets             SessionSet[]
+}
+
+model SessionSet {
+  id                String          @id @default(cuid())
+  sessionExerciseId String
+  setNumber         Int
+  weightKg          Float
+  reps              Int
+  restSeconds       Int?
+  createdAt         DateTime        @default(now())
+  sessionExercise   SessionExercise @relation(fields: [sessionExerciseId], references: [id], onDelete: Cascade)
+}
