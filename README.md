@@ -23,10 +23,10 @@ npm install
 copy .env.example .env
 ```
 
-3. Run Prisma migration:
+3. Sync database schema:
 
 ```bash
-npm run prisma:migrate -- --name init
+npx prisma db push
 ```
 
 4. Start in dev mode:
@@ -48,9 +48,18 @@ npm run start:dev
 ## WhatsApp command example
 
 - `start chest` -> starts a session for chest muscle group
+- `next` -> shows the next pending set/exercise
+- `log 40x10` -> logs current set
+- `finish` -> closes active session
+
+## WhatsApp Cloud API env vars
+
+- `WHATSAPP_VERIFY_TOKEN`: webhook verification token
+- `WHATSAPP_ACCESS_TOKEN`: permanent or temporary Cloud API token
+- `WHATSAPP_PHONE_NUMBER_ID`: your WhatsApp Cloud phone number ID
+- `WHATSAPP_API_VERSION`: default `v21.0`
 
 ## Next steps
 
-- Implement real WhatsApp outgoing messages (Cloud API call)
 - Import workout plans from PDF
 - Add progression logic by previous sessions

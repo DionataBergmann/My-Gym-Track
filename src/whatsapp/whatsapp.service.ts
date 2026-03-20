@@ -1,9 +1,15 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { WorkoutService } from '../workout/workout.service';
 
 @Injectable()
 export class WhatsappService {
-  constructor(private readonly workoutService: WorkoutService) {}
+  private readonly logger = new Logger(WhatsappService.name);
+
+  constructor(
+    private readonly workoutService: WorkoutService,
+    private readonly configService: ConfigService,
+  ) {}
 
   private helpMessage() {
     return [
@@ -78,5 +84,51 @@ export class WhatsappService {
     }
 
     return `Command not recognized.\n\n${this.helpMessage()}`;
+  }
+
+  async replyToIncomingText(fromPhone: string, text: string) {
+    const responseText = await this.processIncomingText(fromPhone, text);
+    await this.sendTextMessage(fromPhone, responseText);
+    return responseText;
+  }
+
+  async sendTextMessage(toPhone: string, message: string) {
+    const accessToken = this.configService.get<string>('WHATSAPP_ACCESS_TOKEN');
+    const phoneNumberId = this.configService.get<string>('WHATSAPP_PHONE_NUMBER_ID');
+    const apiVersion = this.configService.get<string>('WHATSAPP_API_VERSION') ?? 'v21.0';
+
+    if (!accessToken || !phoneNumberId) {
+      this.logger.warn(
+        'WHATSAPP_ACCESS_TOKEN or WHATSAPP_PHONE_NUMBER_ID missing; skipping outbound send.',
+      );
+      return { skipped: true };
+    }
+
+    const url = `https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`;
+    const payload = {
+      messaging_product: 'whatsapp',
+      to: toPhone,
+      type: 'text',
+      text: {
+        body: message.slice(0, 4096),
+      },
+    };
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      this.logger.error(`Failed to send WhatsApp message: ${errorText}`);
+      throw new Error('Failed to send WhatsApp message');
+    }
+
+    return response.json();
   }
 }
