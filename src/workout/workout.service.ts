@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { CreateWorkoutPlanDto } from './dto/create-workout-plan.dto';
 import { LogSetDto } from './dto/log-set.dto';
 import { StartSessionDto } from './dto/start-session.dto';
 
@@ -17,11 +18,12 @@ export class WorkoutService {
 
   async startSession(dto: StartSessionDto) {
     const user = await this.getOrCreateUserByPhone(dto.userPhone);
+    const muscleGroup = dto.muscleGroup.toLowerCase().trim();
 
     const plan = await this.prisma.workoutPlan.findFirst({
       where: {
         userId: user.id,
-        muscleGroup: dto.muscleGroup,
+        muscleGroup,
       },
       include: {
         exercises: {
@@ -32,7 +34,7 @@ export class WorkoutService {
 
     if (!plan) {
       throw new NotFoundException(
-        `No workout plan found for muscle group "${dto.muscleGroup}".`,
+        `No workout plan found for muscle group "${muscleGroup}".`,
       );
     }
     const planExercises = plan.exercises;
@@ -58,6 +60,44 @@ export class WorkoutService {
     });
 
     return session;
+  }
+
+  async createPlan(dto: CreateWorkoutPlanDto) {
+    const user = await this.getOrCreateUserByPhone(dto.userPhone);
+    return this.prisma.workoutPlan.create({
+      data: {
+        userId: user.id,
+        name: dto.name,
+        muscleGroup: dto.muscleGroup.toLowerCase().trim(),
+        exercises: {
+          create: dto.exercises
+            .sort((a, b) => a.orderIndex - b.orderIndex)
+            .map((exercise) => ({
+              exerciseName: exercise.exerciseName,
+              orderIndex: exercise.orderIndex,
+              targetSets: exercise.targetSets,
+              targetReps: exercise.targetReps,
+              restSeconds: exercise.restSeconds,
+            })),
+        },
+      },
+      include: {
+        exercises: {
+          orderBy: { orderIndex: 'asc' },
+        },
+      },
+    });
+  }
+
+  async listPlansByPhone(userPhone: string) {
+    const user = await this.getOrCreateUserByPhone(userPhone);
+    return this.prisma.workoutPlan.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        exercises: { orderBy: { orderIndex: 'asc' } },
+      },
+    });
   }
 
   async getSession(sessionId: string) {
