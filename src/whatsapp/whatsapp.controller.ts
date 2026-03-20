@@ -1,73 +1,76 @@
-import { Body, Controller, Get, Logger, Post, Query } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import {
+  Body,
+  Controller,
+  Header,
+  HttpException,
+  Logger,
+  Post,
+} from '@nestjs/common';
 import { WhatsappService } from './whatsapp.service';
 
-type WhatsappMessage = {
-  from?: string;
-  text?: {
-    body?: string;
-  };
-  type?: string;
-};
-
-type WhatsappWebhookBody = {
-  entry?: Array<{
-    changes?: Array<{
-      value?: {
-        messages?: WhatsappMessage[];
-      };
-    }>;
-  }>;
+type TwilioWebhookBody = {
+  From?: string;
+  Body?: string;
 };
 
 @Controller('webhooks/whatsapp')
 export class WhatsappController {
   private readonly logger = new Logger(WhatsappController.name);
 
-  constructor(
-    private readonly configService: ConfigService,
-    private readonly whatsappService: WhatsappService,
-  ) {}
+  constructor(private readonly whatsappService: WhatsappService) {}
 
-  @Get()
-  verify(
-    @Query('hub.mode') mode?: string,
-    @Query('hub.verify_token') token?: string,
-    @Query('hub.challenge') challenge?: string,
-  ) {
-    const verifyToken = this.configService.get<string>('WHATSAPP_VERIFY_TOKEN');
-    if (mode === 'subscribe' && token && token === verifyToken) {
-      return challenge ?? '';
+  private normalizeTwilioPhone(from?: string) {
+    if (!from) {
+      return '';
     }
-    return 'invalid verify token';
+    return from.replace('whatsapp:', '').replace(/\D/g, '');
+  }
+
+  private buildTwimlMessage(message: string) {
+    const escaped = message
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+    return `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escaped}</Message></Response>`;
   }
 
   @Post()
-  async receiveMessage(@Body() body: WhatsappWebhookBody) {
-    const firstEntry = body.entry?.[0];
-    const firstChange = firstEntry?.changes?.[0];
-    const firstMessage = firstChange?.value?.messages?.[0];
-
-    if (!firstMessage || firstMessage.type !== 'text') {
-      return { ok: true, ignored: true, reason: 'non-text-or-empty' };
-    }
-
-    const fromPhone = firstMessage.from;
-    const messageText = firstMessage.text?.body?.trim();
+  @Header('Content-Type', 'text/xml')
+  async receiveTwilioMessage(@Body() body: TwilioWebhookBody) {
+    const fromPhone = this.normalizeTwilioPhone(body.From);
+    const messageText = body.Body?.trim();
     if (!fromPhone || !messageText) {
-      return { ok: true, ignored: true, reason: 'missing-from-or-text' };
+      return this.buildTwimlMessage('Invalid payload from Twilio.');
     }
 
     try {
-      const response = await this.whatsappService.replyToIncomingText(
+      const response = await this.whatsappService.processIncomingText(
         fromPhone,
         messageText,
       );
-      return { ok: true, response };
+      return this.buildTwimlMessage(response);
     } catch (error) {
       const stack = error instanceof Error ? error.stack : undefined;
-      this.logger.error('Error processing WhatsApp inbound message', stack);
-      return { ok: false };
+      this.logger.error('Error processing Twilio inbound message', stack);
+      if (error instanceof HttpException) {
+        const response = error.getResponse();
+        if (typeof response === 'string') {
+          return this.buildTwimlMessage(response);
+        }
+        if (
+          response &&
+          typeof response === 'object' &&
+          'message' in response &&
+          typeof response.message === 'string'
+        ) {
+          return this.buildTwimlMessage(response.message);
+        }
+      }
+      return this.buildTwimlMessage(
+        'Something went wrong while processing your workout message.',
+      );
     }
   }
 }
