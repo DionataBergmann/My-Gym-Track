@@ -7,12 +7,16 @@ import { StartSessionDto } from './dto/start-session.dto';
 export class WorkoutService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async startSession(dto: StartSessionDto) {
-    const user = await this.prisma.user.upsert({
-      where: { phone: dto.userPhone },
+  private async getOrCreateUserByPhone(phone: string) {
+    return this.prisma.user.upsert({
+      where: { phone },
       update: {},
-      create: { phone: dto.userPhone },
+      create: { phone },
     });
+  }
+
+  async startSession(dto: StartSessionDto) {
+    const user = await this.getOrCreateUserByPhone(dto.userPhone);
 
     const plan = await this.prisma.workoutPlan.findFirst({
       where: {
@@ -70,6 +74,73 @@ export class WorkoutService {
         },
       },
     });
+  }
+
+  async getActiveSessionByPhone(userPhone: string) {
+    const user = await this.getOrCreateUserByPhone(userPhone);
+    return this.prisma.workoutSession.findFirst({
+      where: {
+        userId: user.id,
+        status: 'ACTIVE',
+      },
+      orderBy: { startedAt: 'desc' },
+      include: {
+        exercises: {
+          orderBy: { orderIndex: 'asc' },
+          include: {
+            sets: { orderBy: { setNumber: 'asc' } },
+          },
+        },
+      },
+    });
+  }
+
+  async getNextExercise(userPhone: string) {
+    const session = await this.getActiveSessionByPhone(userPhone);
+    if (!session) {
+      throw new NotFoundException(
+        'No active workout session. Start one with: start chest',
+      );
+    }
+
+    const sessionExercises = session.exercises;
+    const nextExercise = sessionExercises.find(
+      (exercise: (typeof sessionExercises)[number]) =>
+        exercise.sets.length < exercise.targetSets,
+    );
+    if (!nextExercise) {
+      return { session, nextExercise: null };
+    }
+
+    const nextSetNumber = nextExercise.sets.length + 1;
+    return { session, nextExercise, nextSetNumber };
+  }
+
+  async logSetByPhone(userPhone: string, weightKg: number, reps: number) {
+    const next = await this.getNextExercise(userPhone);
+    if (!next.nextExercise || !next.nextSetNumber) {
+      throw new NotFoundException(
+        'All exercises are already complete. Use finish to close the session.',
+      );
+    }
+
+    const set = await this.logSet({
+      sessionExerciseId: next.nextExercise.id,
+      setNumber: next.nextSetNumber,
+      weightKg,
+      reps,
+      restSeconds: next.nextExercise.restSeconds,
+    });
+
+    return { set, next };
+  }
+
+  async finishActiveSessionByPhone(userPhone: string) {
+    const session = await this.getActiveSessionByPhone(userPhone);
+    if (!session) {
+      throw new NotFoundException('No active workout session to finish.');
+    }
+    return this.finishSession(session.id);
   }
 
   async logSet(dto: LogSetDto) {
