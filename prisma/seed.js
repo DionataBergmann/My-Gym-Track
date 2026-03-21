@@ -1,6 +1,33 @@
+require('dotenv').config();
+
 const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
+
+function normalizeBrazilPhoneDigits(input) {
+  const digits = String(input).replace(/\D/g, '');
+  if (!digits.startsWith('55') || digits.length < 12) {
+    return digits;
+  }
+  if (digits.length === 12 && /^55\d{10}$/.test(digits)) {
+    const afterDdd = digits.slice(4);
+    if (afterDdd.length === 8 && !afterDdd.startsWith('9')) {
+      return `${digits.slice(0, 4)}9${afterDdd}`;
+    }
+  }
+  return digits;
+}
+
+function legacyBrazilMobileWithoutNine(canonical) {
+  if (canonical.length !== 13 || !canonical.startsWith('55')) {
+    return null;
+  }
+  const afterDdd = canonical.slice(4);
+  if (afterDdd.length === 9 && afterDdd.startsWith('9')) {
+    return `${canonical.slice(0, 4)}${afterDdd.slice(1)}`;
+  }
+  return null;
+}
 
 const plans = [
   {
@@ -58,12 +85,17 @@ const plans = [
 ];
 
 async function main() {
-  const userPhone = process.env.SEED_USER_PHONE || '5553984332609';
+  const raw = process.env.SEED_USER_PHONE || '5553984332609';
+  const userPhone = normalizeBrazilPhoneDigits(raw);
+  const legacy = legacyBrazilMobileWithoutNine(userPhone);
+  const phonesToMerge = [userPhone, legacy].filter(Boolean);
 
-  const user = await prisma.user.upsert({
-    where: { phone: userPhone },
-    update: {},
-    create: { phone: userPhone },
+  await prisma.user.deleteMany({
+    where: { phone: { in: phonesToMerge } },
+  });
+
+  const user = await prisma.user.create({
+    data: { phone: userPhone },
   });
 
   await prisma.workoutPlan.deleteMany({

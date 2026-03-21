@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { PrismaModule } from './prisma/prisma.module';
 import { WorkoutModule } from './workout/workout.module';
@@ -7,6 +8,7 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     ConfigModule.forRoot({
       isGlobal: true,
     }),
