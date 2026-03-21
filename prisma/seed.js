@@ -1,4 +1,10 @@
-require('dotenv').config();
+const fs = require('fs');
+// Render: Secret File named ".env" is mounted at /etc/secrets/.env (not project root).
+if (fs.existsSync('/etc/secrets/.env')) {
+  require('dotenv').config({ path: '/etc/secrets/.env' });
+} else {
+  require('dotenv').config();
+}
 
 const { PrismaClient } = require('@prisma/client');
 
@@ -88,24 +94,25 @@ async function main() {
   const raw = process.env.SEED_USER_PHONE || '5553984332609';
   const userPhone = normalizeBrazilPhoneDigits(raw);
   const legacy = legacyBrazilMobileWithoutNine(userPhone);
-  const phonesToMerge = [userPhone, legacy].filter(Boolean);
 
-  await prisma.user.deleteMany({
-    where: { phone: { in: phonesToMerge } },
-  });
+  /** Idempotent: safe to run on every deploy (e.g. Render Free has no Shell). */
+  let user = await prisma.user.findUnique({ where: { phone: userPhone } });
+  if (!user && legacy) {
+    user = await prisma.user.findUnique({ where: { phone: legacy } });
+  }
+  if (!user) {
+    user = await prisma.user.create({ data: { phone: userPhone } });
+    console.log(`Created user ${userPhone}`);
+  }
 
-  const user = await prisma.user.create({
-    data: { phone: userPhone },
-  });
-
-  await prisma.workoutPlan.deleteMany({
-    where: {
-      userId: user.id,
-      muscleGroup: { in: plans.map((plan) => plan.muscleGroup) },
-    },
-  });
-
+  let created = 0;
   for (const plan of plans) {
+    const existing = await prisma.workoutPlan.findFirst({
+      where: { userId: user.id, muscleGroup: plan.muscleGroup },
+    });
+    if (existing) {
+      continue;
+    }
     await prisma.workoutPlan.create({
       data: {
         userId: user.id,
@@ -116,9 +123,14 @@ async function main() {
         },
       },
     });
+    created += 1;
   }
 
-  console.log(`Seed completed for user phone: ${userPhone}`);
+  if (created === 0) {
+    console.log(`Seed skipped (plans already exist) for user phone: ${userPhone}`);
+  } else {
+    console.log(`Seed completed: +${created} plan(s) for user phone: ${userPhone}`);
+  }
 }
 
 main()

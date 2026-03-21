@@ -7,7 +7,8 @@ services:
     plan: free
     region: oregon
     buildCommand: npm install && npx prisma generate && npm run build
-    startCommand: npx prisma db push && npm run start
+    # Free tier has no Shell — seed runs here (idempotent; see prisma/seed.js).
+    startCommand: npx prisma db push && npm run seed && npm run start
     healthCheckPath: /health
     envVars:
       - key: NODE_VERSION
