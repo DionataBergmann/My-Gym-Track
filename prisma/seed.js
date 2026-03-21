@@ -1,10 +1,4 @@
-const fs = require('fs');
-// Render: Secret File named ".env" is mounted at /etc/secrets/.env (not project root).
-if (fs.existsSync('/etc/secrets/.env')) {
-  require('dotenv').config({ path: '/etc/secrets/.env' });
-} else {
-  require('dotenv').config();
-}
+require('dotenv').config();
 
 const { PrismaClient } = require('@prisma/client');
 
