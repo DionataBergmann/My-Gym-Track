@@ -48,10 +48,16 @@ npm run start:dev
 
 ## WhatsApp command example
 
-- `start chest` -> starts a session for chest muscle group
-- `next` -> shows the next pending set/exercise
-- `log 40x10` -> logs current set
-- `finish` -> closes active session
+- `start upper-a` / `start chest` -> Upper A day (chest is an alias for upper-a)
+- `start upper-b` | `start lower-a` | `start lower-b` -> other seeded days
+- `next` (shortcut **`n`**) -> shows the next pending set/exercise
+- `log 10x40` (shortcut **`l 10x40`**) -> logs current set as **reps × kg** (e.g. 10 reps at 40 kg)
+- `finish` (shortcut **`f`**) -> closes active session
+- `menu` (shortcut **`m`**) -> quick actions list
+
+**Rest timer:** after `l`, you get a short summary of the **next** set; when rest ends, Twilio sends a **full exercise card** (same style as `n`) plus “descanso encerrado” (requires outbound env vars). No live countdown in the bubble.
+
+**Tap buttons:** real WhatsApp “tap buttons” need **approved message templates** in Twilio/Meta. This project uses short text commands (`n`, `f`, `m`) as the lightweight alternative.
 
 ## Twilio WhatsApp Sandbox setup
 
@@ -65,7 +71,11 @@ npm run start:dev
 
 - `TWILIO_ACCOUNT_SID`: Twilio account SID
 - `TWILIO_AUTH_TOKEN`: Twilio auth token
-- `TWILIO_WHATSAPP_SANDBOX_NUMBER`: default sandbox sender number
+- `TWILIO_WHATSAPP_SANDBOX_NUMBER`: número **From** do WhatsApp Sandbox (ex. `+14155238886`). Sem isso, o aviso no fim do descanso **não é enviado**; ao dar `l`, a resposta mostra um aviso `⚠️`.
+
+Se as variáveis estiverem certas e ainda falhar, veja os logs da API: `Twilio outbound failed` traz o erro da Twilio (número `To`/`From`, sandbox, etc.).
+
+Após `npx prisma db push`, a tabela `PendingRestPing` guarda o horário do lembrete (mais estável que só `setTimeout` na memória).
 
 ## Create a workout plan (required before `start`)
 
@@ -82,6 +92,16 @@ Example request:
   ]
 }
 ```
+
+## Troubleshooting (local)
+
+If WhatsApp says no plan but you ran seed:
+
+```bash
+npm run db:inspect
+```
+
+You should see **one** user with **4** plans. If you see two users (legacy vs canonical phone), pull latest code — the API merges duplicates on the next request — or delete `prisma/gymtrack.db` and run `npm run seed` again.
 
 ## Seed default plans
 

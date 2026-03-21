@@ -71,3 +71,11 @@ model SessionSet {
   createdAt         DateTime        @default(now())
   sessionExercise   SessionExercise @relation(fields: [sessionExerciseId], references: [id], onDelete: Cascade)
 }
+
+/** Outbound rest ping: DB + poller survives process restarts better than in-memory setTimeout. */
+model PendingRestPing {
+  id        String   @id @default(cuid())
+  userPhone String   @unique
+  sendAt    DateTime
+  createdAt DateTime @default(now())
+}

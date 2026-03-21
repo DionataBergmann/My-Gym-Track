@@ -1,4 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  legacyBrazilMobileWithoutNine,
+  normalizeBrazilPhoneDigits,
+} from '../common/phone.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateWorkoutPlanDto } from './dto/create-workout-plan.dto';
 import { LogSetDto } from './dto/log-set.dto';
@@ -9,11 +13,63 @@ export class WorkoutService {
   constructor(private readonly prisma: PrismaService) {}
 
   private async getOrCreateUserByPhone(phone: string) {
-    return this.prisma.user.upsert({
-      where: { phone },
-      update: {},
-      create: { phone },
+    const normalized = normalizeBrazilPhoneDigits(phone.replace(/\D/g, ''));
+    const legacy = legacyBrazilMobileWithoutNine(normalized);
+
+    const matches = await this.prisma.user.findMany({
+      where: {
+        OR: [
+          { phone: normalized },
+          ...(legacy ? [{ phone: legacy }] : []),
+        ],
+      },
+      include: {
+        plans: { select: { id: true } },
+      },
     });
+
+    if (matches.length === 0) {
+      return this.prisma.user.create({ data: { phone: normalized } });
+    }
+
+    if (matches.length === 1) {
+      const u = matches[0];
+      if (u.phone !== normalized) {
+        return this.prisma.user.update({
+          where: { id: u.id },
+          data: { phone: normalized },
+        });
+      }
+      return u;
+    }
+
+    // Twilio legacy + canonical created duplicate rows — merge into one user (prefer one with plans).
+    const sorted = [...matches].sort(
+      (a, b) => b.plans.length - a.plans.length,
+    );
+    const primary = sorted[0];
+
+    for (const other of sorted.slice(1)) {
+      await this.prisma.workoutPlan.updateMany({
+        where: { userId: other.id },
+        data: { userId: primary.id },
+      });
+      await this.prisma.workoutSession.updateMany({
+        where: { userId: other.id },
+        data: { userId: primary.id },
+      });
+      await this.prisma.user.delete({ where: { id: other.id } });
+    }
+
+    const updated =
+      primary.phone !== normalized
+        ? await this.prisma.user.update({
+            where: { id: primary.id },
+            data: { phone: normalized },
+          })
+        : primary;
+
+    return this.prisma.user.findUniqueOrThrow({ where: { id: updated.id } });
   }
 
   async startSession(dto: StartSessionDto) {
@@ -34,7 +90,7 @@ export class WorkoutService {
 
     if (!plan) {
       throw new NotFoundException(
-        `No workout plan found for muscle group "${muscleGroup}".`,
+        `No workout plan for "${muscleGroup}" on YOUR number. Send "phone" to see your id, put it in SEED_USER_PHONE, run npm run seed (on the same machine as this API — e.g. Render Shell if deployed).`,
       );
     }
     const planExercises = plan.exercises;
@@ -139,7 +195,7 @@ export class WorkoutService {
     const session = await this.getActiveSessionByPhone(userPhone);
     if (!session) {
       throw new NotFoundException(
-        'No active workout session. Start one with: start chest',
+        'No active workout session. Start with: start upper-a (or chest, upper-b, lower-a, lower-b)',
       );
     }
 
@@ -157,21 +213,23 @@ export class WorkoutService {
   }
 
   async logSetByPhone(userPhone: string, weightKg: number, reps: number) {
-    const next = await this.getNextExercise(userPhone);
-    if (!next.nextExercise || !next.nextSetNumber) {
+    const pending = await this.getNextExercise(userPhone);
+    if (!pending.nextExercise || !pending.nextSetNumber) {
       throw new NotFoundException(
         'All exercises are already complete. Use finish to close the session.',
       );
     }
 
     const set = await this.logSet({
-      sessionExerciseId: next.nextExercise.id,
-      setNumber: next.nextSetNumber,
+      sessionExerciseId: pending.nextExercise.id,
+      setNumber: pending.nextSetNumber,
       weightKg,
       reps,
-      restSeconds: next.nextExercise.restSeconds,
+      restSeconds: pending.nextExercise.restSeconds,
     });
 
+    // Re-fetch so callers see the *next* pending set (not the one just logged).
+    const next = await this.getNextExercise(userPhone);
     return { set, next };
   }
 

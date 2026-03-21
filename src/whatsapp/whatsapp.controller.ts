@@ -6,6 +6,7 @@ import {
   Logger,
   Post,
 } from '@nestjs/common';
+import { normalizeBrazilPhoneDigits } from '../common/phone.util';
 import { WhatsappService } from './whatsapp.service';
 
 type TwilioWebhookBody = {
@@ -39,7 +40,9 @@ export class WhatsappController {
   @Post()
   @Header('Content-Type', 'text/xml')
   async receiveTwilioMessage(@Body() body: TwilioWebhookBody) {
-    const fromPhone = this.normalizeTwilioPhone(body.From);
+    const fromPhone = normalizeBrazilPhoneDigits(
+      this.normalizeTwilioPhone(body.From),
+    );
     const messageText = body.Body?.trim();
     if (!fromPhone || !messageText) {
       return this.buildTwimlMessage('Invalid payload from Twilio.');
