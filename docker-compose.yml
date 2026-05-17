@@ -1,0 +1,27 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gymtracker
+      POSTGRES_USER: gymtracker
+      POSTGRES_PASSWORD: gymtracker
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgresql://gymtracker:gymtracker@db:5432/gymtracker
+      JWT_SECRET: troca-em-producao
+      PORT: 3000
+    ports:
+      - "3000:3000"
+
+volumes:
+  pg_data:

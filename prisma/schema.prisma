@@ -3,79 +3,77 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
 model User {
-  id        String         @id @default(cuid())
-  phone     String         @unique
-  createdAt DateTime       @default(now())
-  plans     WorkoutPlan[]
-  sessions  WorkoutSession[]
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  exercises Exercise[]
+  workouts  Workout[]
 }
 
-model WorkoutPlan {
-  id          String            @id @default(cuid())
+model Exercise {
+  id          String   @id @default(cuid())
   userId      String
   name        String
   muscleGroup String
-  createdAt   DateTime          @default(now())
-  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  exercises   WorkoutExercise[]
-  sessions    WorkoutSession[]
+  equipment   String?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workoutExercises WorkoutExercise[]
+}
+
+model Workout {
+  id         String        @id @default(cuid())
+  userId     String
+  name       String
+  date       DateTime      @default(now())
+  notes      String?
+  status     WorkoutStatus @default(IN_PROGRESS)
+  finishedAt DateTime?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercises WorkoutExercise[]
+}
+
+enum WorkoutStatus {
+  IN_PROGRESS
+  DONE
 }
 
 model WorkoutExercise {
-  id           String      @id @default(cuid())
-  workoutPlanId String
-  exerciseName String
-  orderIndex   Int
-  targetSets   Int
-  targetReps   Int
-  restSeconds  Int
-  workoutPlan  WorkoutPlan @relation(fields: [workoutPlanId], references: [id], onDelete: Cascade)
+  id         String  @id @default(cuid())
+  workoutId  String
+  exerciseId String
+  orderIndex Int
+  notes      String?
+
+  workout  Workout  @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  exercise Exercise @relation(fields: [exerciseId], references: [id])
+  sets     Set[]
 }
 
-model WorkoutSession {
-  id           String            @id @default(cuid())
-  userId       String
-  workoutPlanId String
-  status       String            @default("ACTIVE")
-  startedAt    DateTime          @default(now())
-  finishedAt   DateTime?
-  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workoutPlan  WorkoutPlan       @relation(fields: [workoutPlanId], references: [id], onDelete: Cascade)
-  exercises    SessionExercise[]
-}
-
-model SessionExercise {
-  id               String        @id @default(cuid())
-  workoutSessionId String
-  exerciseName     String
-  orderIndex       Int
-  targetSets       Int
-  targetReps       Int
-  restSeconds      Int
-  workoutSession   WorkoutSession @relation(fields: [workoutSessionId], references: [id], onDelete: Cascade)
-  sets             SessionSet[]
-}
-
-model SessionSet {
-  id                String          @id @default(cuid())
-  sessionExerciseId String
+model Set {
+  id                String   @id @default(cuid())
+  workoutExerciseId String
   setNumber         Int
   weightKg          Float
   reps              Int
   restSeconds       Int?
-  createdAt         DateTime        @default(now())
-  sessionExercise   SessionExercise @relation(fields: [sessionExerciseId], references: [id], onDelete: Cascade)
-}
+  notes             String?
+  completedAt       DateTime @default(now())
 
-/** Outbound rest ping: DB + poller survives process restarts better than in-memory setTimeout. */
-model PendingRestPing {
-  id        String   @id @default(cuid())
-  userPhone String   @unique
-  sendAt    DateTime
-  createdAt DateTime @default(now())
+  workoutExercise WorkoutExercise @relation(fields: [workoutExerciseId], references: [id], onDelete: Cascade)
 }

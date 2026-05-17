@@ -1,22 +1,16 @@
-# Render Blueprint (Web Service)
-# Docs: https://render.com/docs/blueprint-spec
 services:
   - type: web
-    name: my-gym-track-api
+    name: gym-tracker-api
     runtime: node
     plan: free
     region: oregon
-    buildCommand: npm install && npx prisma generate && npm run build
-    # Free tier has no Shell — seed runs here (idempotent; see prisma/seed.js).
-    startCommand: npx prisma db push && npm run seed && npm run start
+    buildCommand: npm install --legacy-peer-deps && npx prisma generate && npm run build
+    startCommand: npx prisma migrate deploy && npm run start
     healthCheckPath: /health
     envVars:
       - key: NODE_VERSION
-        value: "22"
+        value: "20"
       - key: DATABASE_URL
-        value: file:./prisma/render.db
-      # Set these in the Render dashboard (do not commit secrets):
-      # TWILIO_ACCOUNT_SID
-      # TWILIO_AUTH_TOKEN
-      # TWILIO_WHATSAPP_SANDBOX_NUMBER
-      # SEED_USER_PHONE (digits only, same as your WhatsApp number for Twilio)
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
