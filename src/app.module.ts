@@ -1,21 +1,21 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { ScheduleModule } from '@nestjs/schedule';
-import { AppController } from './app.controller';
+import { AuthModule } from './auth/auth.module';
+import { ExercisesModule } from './exercises/exercises.module';
+import { HealthController } from './health.controller';
 import { PrismaModule } from './prisma/prisma.module';
-import { WorkoutModule } from './workout/workout.module';
-import { WhatsappModule } from './whatsapp/whatsapp.module';
+import { UsersModule } from './users/users.module';
+import { WorkoutsModule } from './workouts/workouts.module';
 
 @Module({
   imports: [
-    ScheduleModule.forRoot(),
-    ConfigModule.forRoot({
-      isGlobal: true,
-    }),
+    ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
-    WorkoutModule,
-    WhatsappModule,
+    AuthModule,
+    UsersModule,
+    ExercisesModule,
+    WorkoutsModule,
   ],
-  controllers: [AppController],
+  controllers: [HealthController],
 })
 export class AppModule {}
